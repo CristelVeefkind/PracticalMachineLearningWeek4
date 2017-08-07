@@ -1,0 +1,90 @@
+---
+title: "Week4MachineLearning"
+author: "Christel Veefkind"
+date: "4 augustus 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har
+```{r ibrarys and data, echo=TRUE}
+library(caret)
+library(ggplot2)
+library(e1071)
+library(ipred)
+library(rpart)
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+```
+
+## Process data
+Remove the columns that are not interesting (column 1 to 6)
+Remove the columns with NA data
+Create a training/test partioning of the training data as we are using
+the test set for validation.
+
+
+```{r dataprocess, echo=TRUE}
+training$classe <- as.factor(training$classe)
+training<-training[,7:160]
+is_data  <- apply(!is.na(training), 2, sum) > 19621
+training <- training[,is_data]
+
+testing$problem_id<- as.factor(testing$problem_id)
+testing<-testing[,7:160]
+testing<-testing[,is_data]
+set.seed(123)
+training_sample <- createDataPartition(y=training$classe, p=0.6, list=FALSE)
+train_1 <- training[training_sample, ]
+test_1 <- training[-training_sample, ]
+
+#still to many variables, so we get rid of the near zero covariance variables
+nearzv_c <- nearZeroVar(train_1)
+if(length(nearzv_c) > 0) {
+  train_1 <- train_1[, -nearzv_c]
+  test_1 <- test_1[, -nearzv_c]
+}
+
+```
+## Model building
+We are going to use cross validation to help us with the determining the accuracy of the model.
+We will try rf. 
+```{r model, echo=TRUE}
+
+#create rf model
+rf_fit<-train(classe~.,method="rf",trControl=trainControl(method="repeatedcv",number=5,repeats=1), data=train_1,allowParallel=TRUE,verbose=FALSE)
+
+model_rf<-predict(rf_fit,newdata=test_1)
+confmatrix_Rf <- confusionMatrix(model_rf, test_1$classe)
+confmatrix_Rf
+#The accuracy of the randomforest model is 99.8%
+
+#create also a decisiontree model
+rpart_fit <- rpart(classe ~ ., data=train_1, method="class")
+model_rpart <- predict(rpart_fit, newdata= test_1, type = "class")
+confmatrix_rpart <- confusionMatrix(model_rpart,test_1$classe)
+confmatrix_rpart
+#The accuracy of the decisiontree model is 88.67%
+
+#create lastly a gradient boosting machine model with crossvalidation method repeated cv
+gbm_fit  <- train(classe ~ ., data=train_1, method = "gbm",trControl = trainControl(method = "repeatedcv", number = 5, repeats = 1), verbose = FALSE)
+model_gbm <- predict(gbm_fit, newdata= test_1)
+confmatrix_gbm <- confusionMatrix(model_gbm, test_1$classe)
+confmatrix_gbm
+#The accuracy of the gradient boosting machine model with crosssvalidation is also 98.88%
+
+
+```
+##Conclusion
+
+The Randomforest performs a lot better than the Decisiontree and a little bit better than the Gradient Boosting machine with an accuracy of 99%. So we can say that the predictions can be done with RandomForest.
+
